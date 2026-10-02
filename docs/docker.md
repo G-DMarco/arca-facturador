@@ -33,7 +33,7 @@ docker compose exec --user root facturador chmod 600 /data/certificados/emisor.c
 
 El paso temporal como root solo ajusta permisos de esos archivos; la aplicación corre como usuario sin privilegios. La clave PEM debe estar sin contraseña en esta versión. Pedí a tu contador ayuda para obtener y autorizar certificado, servicio y punto de venta en el entorno adecuado. Estos comandos no solicitan autorización ni emiten facturas.
 
-Si ya tenés una instalación privada, detené la emisión y migrá **también** sus bases SQLite, tickets y registros, conservando entorno, CUIT, punto de venta e IDs. No migres solamente el CSV o la configuración: perder el historial puede permitir duplicados. La ruta de certificados de la interfaz es relativa a `/data` (en uso local sin Docker, relativa al proyecto). La configuración externa `ARCA_DATA_DIR` permite elegir otra carpeta de datos fuera de Docker.
+Si ya tenés una instalación privada, detené la emisión y migrá **también** sus bases SQLite, tickets y registros, conservando entorno, CUIT, punto de venta e IDs. Al importar de nuevo un CSV antiguo, la descripción predeterminada ahora es genérica: si difiere del payload guardado, se bloqueará ese ID por datos distintos. No lo cambies para forzar un reenvío; recuperá el comprobante desde Historial o revisá el registro original. No migres solamente el CSV o la configuración: perder el historial puede permitir duplicados. La ruta de certificados de la interfaz es relativa a `/data` (en uso local sin Docker, relativa al proyecto). La configuración externa `ARCA_DATA_DIR` permite elegir otra carpeta de datos fuera de Docker.
 
 ## Datos y copias de seguridad
 

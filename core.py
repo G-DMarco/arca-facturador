@@ -184,7 +184,7 @@ def emit_batch(rows, config):
                 if old:
                     if old[0] != payload:
                         raise ValueError(f"ID {row['id']} ya registrado con datos distintos")
-                    if old[2] == 'rechazada':
+                    if InvoiceState(old[2]).allows_retry:
                         rows_to_issue.append((row, payload))
                         continue
                     output.append({'id':row['id'],'numero':old[1],'estado':old[2],'respuesta':json.loads(old[3]) if old[3] else None})

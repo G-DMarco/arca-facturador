@@ -2,7 +2,7 @@
 """Business entities. No UI, filesystem, database, network or framework imports."""
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 
 
@@ -72,7 +72,11 @@ class ServiceItem:
     def __post_init__(self):
         if not isinstance(self.quantity, int) or isinstance(self.quantity, bool) or self.quantity <= 0:
             raise BusinessRuleError("La cantidad debe ser un entero positivo")
-        if not self.unit_price.is_finite() or self.unit_price <= 0 or self.unit_price != self.unit_price.quantize(Decimal("0.01")):
+        try:
+            valid_price = isinstance(self.unit_price, Decimal) and self.unit_price.is_finite() and self.unit_price > 0 and self.unit_price == self.unit_price.quantize(Decimal("0.01"))
+        except InvalidOperation:
+            valid_price = False
+        if not valid_price:
             raise BusinessRuleError("Precio inválido; máximo 2 decimales")
         if not self.description.strip():
             raise BusinessRuleError("La descripción del servicio no puede estar vacía")
