@@ -1,0 +1,35 @@
+# Credenciales y configuración privada
+config.json
+config.*.json
+!config.example.json
+!config.produccion.example.json
+certificados/
+*.key
+*.pem
+*.crt
+*.cer
+*.csr
+*.p8
+*.p7b
+*.p7c
+*.p12
+*.pfx
+wsaa_ta_*.json
+.env
+.env.*
+# Datos y comprobantes
+*.sqlite*
+*.db
+*.lock
+*.pdf
+*.zip
+*.csv
+!facturas_ejemplo.csv
+resultados*.json
+lote_*_local.csv
+# Entorno
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/

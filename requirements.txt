@@ -1,0 +1,5 @@
+streamlit>=1.40,<2
+zeep>=4.3,<5
+cryptography>=43
+filelock>=3.16
+reportlab>=4.2

@@ -1,0 +1,14 @@
+{
+  "entorno": "homologacion",
+  "cuit": "00000000000",
+  "punto_venta": 1,
+  "certificado": "certificados/emisor.crt",
+  "clave_privada": "certificados/emisor.key",
+  "nombre_emisor": "Profesional de ejemplo",
+  "profesion": "Psicología clínica",
+  "matricula": "CONFIGURAR",
+  "domicilio_comercial": "CONFIGURAR",
+  "localidad": "CONFIGURAR",
+  "alias": "CONFIGURAR",
+  "cbu": ""
+}
