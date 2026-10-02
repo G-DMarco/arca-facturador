@@ -18,7 +18,7 @@ When transcribing an image, check the written month rather than replacing it wit
 
 `app.py` uploads and previews; `core.py` validates, authenticates, issues, and records. Testing (`homologacion`) and production (`produccion`) have separate databases, WSAA tickets, and locks. The local key is `(scope,id)`; scope includes environment, CUIT, and point of sale. Do not change IDs or delete records to bypass duplicate controls. A pending record blocks the batch: query ARCA and reconcile the result before retrying. An authorized record retains its payload, invoice number, and CAE. Locks coordinate this installation only.
 
-Preparing a CSV, editing code, or regenerating a PDF does not authorize real issuance. Issue only when the user explicitly requests it and the interface confirmation controls are satisfied, including `EMITIR REAL` for production. The core API has no equivalent UI confirmation; do not bypass the workflow by calling it directly for real issuance. Editing a CSV does not alter an already authorized invoice; do not silently replace its saved payload.
+Preparing a CSV, editing code, or regenerating a PDF does not authorize real issuance. Issue only when the user explicitly requests it and the interface confirmation controls are satisfied, including `EMITIR REAL` for production. The core API also requires explicit production confirmation; do not bypass the user-authorized workflow. Editing a CSV does not alter an already authorized invoice; do not silently replace its saved payload.
 
 ## PDFs
 

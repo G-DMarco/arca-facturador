@@ -29,7 +29,7 @@ Abrí http://127.0.0.1:8501. La pantalla te guía por **Configuración → Prepa
 
 ```powershell
 py -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pip install -r requirements.txt -c requirements.lock
 Copy-Item config.example.json config.json
 New-Item -ItemType Directory -Force certificados
 ```
@@ -48,7 +48,7 @@ Requiere Python 3.10 o posterior con `venv` y Bash. En WSL, instalar Python dent
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.txt -c requirements.lock
 (umask 077; cp -n config.example.json config.json; mkdir -p certificados)
 # Completar config.json e instalar el certificado y la clave propios.
 chmod 700 certificados
@@ -121,7 +121,7 @@ Requires Python 3.10+ and Bash for the shell launcher. On Linux, macOS, or WSL:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.txt -c requirements.lock
 (umask 077; cp -n config.example.json config.json; mkdir -p certificados)
 # Fill in config.json and add your own certificate and private key.
 chmod 700 certificados
@@ -133,7 +133,7 @@ On Windows PowerShell:
 
 ```powershell
 py -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python -m pip install -r requirements.txt -c requirements.lock
 Copy-Item config.example.json config.json
 New-Item -ItemType Directory -Force certificados
 # Fill in config.json and add your own certificate and private key.

@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Use alongside compose.yaml for one private professional installation.
 services:
+  facturador:
+    environment:
+      STREAMLIT_BROWSER_SERVER_ADDRESS: ${ARCA_DOMAIN:?Set ARCA_DOMAIN}
   gateway:
-    image: caddy:2
+    image: caddy:2@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
     ports:
       - "80:80"
       - "443:443"
@@ -17,6 +20,9 @@ services:
     depends_on:
       facturador:
         condition: service_healthy
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

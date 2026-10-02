@@ -1,2 +1,2 @@
 id,nombre,documento,fecha,desde,hasta,vencimiento,sesiones,precio_sesion,condicion_iva,observaciones,nota
-2026-09-EJEMPLO-001,Paciente ficticio,,2026-09-30,2026-09-01,2026-09-30,2026-10-10,5,55000,5,,Ejemplo ficticio
+2026-09-EJEMPLO-001,Individuo,,2026-09-30,2026-09-01,2026-09-30,2026-10-10,1,40000,5,,Ejemplo ficticio

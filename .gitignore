@@ -38,3 +38,20 @@ __pycache__/
 data/
 backups/
 !.env.hosted.example
+
+# Private exports and diagnostics
+*.log
+*.bak
+*.tar
+*.tar.gz
+*.tgz
+*.dump
+*.bundle
+.ssh/
+
+# Local history sanitization plan (not for publication)
+.privacy/
+
+# Interrupted private JSON writes
+.private-*
+.config-*

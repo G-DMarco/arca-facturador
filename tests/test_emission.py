@@ -15,6 +15,13 @@ class EmissionPersistenceTests(unittest.TestCase):
         self.api = MagicMock()
         self.api.ws.service.FECompUltimoAutorizado.return_value = SimpleNamespace(Errors=None, CbteNro=0)
 
+    def test_production_requires_confirmation_before_any_write_or_network(self):
+        with tempfile.TemporaryDirectory() as folder, patch("core.DATA_ROOT", Path(folder)), patch("core.Arca") as create_api:
+            with self.assertRaisesRegex(ValueError, "confirmación"):
+                emit_batch(self.rows,dict(self.config,entorno="produccion"))
+            self.assertEqual(list(Path(folder).iterdir()),[])
+            create_api.assert_not_called()
+
     def test_uncertain_reply_remains_pending_and_blocks_next_call(self):
         self.api.issue.return_value = {}
         with tempfile.TemporaryDirectory() as folder, patch("core.DATA_ROOT", Path(folder)), patch("core.Arca", return_value=self.api) as create_api:

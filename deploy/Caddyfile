@@ -1,7 +1,28 @@
 # SPDX-License-Identifier: Apache-2.0
+{
+	admin off
+}
 {$ARCA_DOMAIN} {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Cache-Control "no-store"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
 	basic_auth {
 		{$ARCA_LOGIN} {$ARCA_PASSWORD_HASH}
 	}
-	reverse_proxy facturador:8501
+	request_body {
+		max_size 6MB
+	}
+	reverse_proxy facturador:8501 {
+		header_up -Authorization
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 30s
+		}
+	}
 }

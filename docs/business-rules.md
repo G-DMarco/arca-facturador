@@ -16,7 +16,7 @@ Las entidades están en `domain.py`, usan solo la biblioteca estándar y son inm
 
 Los nombres heredados del CSV son un detalle del adaptador: `sesiones` se convierte en cantidad y `precio_sesion` en precio por unidad. Una entidad de servicio puede representar consultoría, clases, reparaciones u otros servicios dentro del alcance fiscal soportado. No se implementan productos, cantidades fraccionarias, varias líneas por factura ni otros tipos fiscales.
 
-Las reglas expresan el alcance de este programa, no una certificación de la normativa fiscal vigente. La longitud del CUIT es una validación de formato, no una verificación de identidad o autorización ARCA. La emisión real sigue requiriendo autorización explícita del usuario y controles de la interfaz. El scope fiscal no equivale a autenticación o aislamiento SaaS.
+Las reglas expresan el alcance de este programa, no una certificación de la normativa fiscal vigente. La longitud del CUIT es una validación de formato, no una verificación de identidad o autorización ARCA. La emisión real sigue requiriendo autorización explícita del usuario, controles de la interfaz y confirmación validada en el núcleo antes de cualquier escritura o llamada de emisión. El scope fiscal no equivale a autenticación o aislamiento SaaS.
 
 ## Cómo conservar las reglas
 

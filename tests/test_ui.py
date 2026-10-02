@@ -27,6 +27,10 @@ class GuidedUiTests(unittest.TestCase):
             self.assertEqual(len(app.session_state["draft_rows"]), 1)
             self.assertEqual(app.session_state["draft_rows"][0]["observaciones"], "Consultoría de diseño")
             self.assertTrue(widget(app.button, "Generar comprobantes de prueba").disabled)
+            # Forge the action even though the browser button is disabled.
+            widget(app.button, "Generar comprobantes de prueba").click().run()
+            self.assertFalse(app.exception)
+            self.assertTrue(any("confirmá el lote" in error.value for error in app.error))
             arca.assert_not_called()
 
     def test_production_cannot_be_enabled_without_acknowledgement(self):

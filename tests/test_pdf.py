@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+from decimal import Decimal
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -27,7 +28,7 @@ class InvoicePdfTests(unittest.TestCase):
             self.assertTrue(data.startswith(b'%PDF-'))
             qr.assert_called_once()
             payload = qr.call_args.args[-1]
-            self.assertEqual(payload['importe'], 275000)
+            self.assertEqual(Decimal(str(payload['importe'])), Decimal(row['total']))
             self.assertEqual(payload['nroCmp'], 7)
             self.assertEqual(payload['ptoVta'], 1)
             self.assertEqual(payload['codAut'], 12345678901234)
