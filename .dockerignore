@@ -2,6 +2,7 @@
 **
 !Dockerfile
 !requirements.txt
+!requirements.lock
 !app.py
 !core.py
 !domain.py
