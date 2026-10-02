@@ -1,6 +1,6 @@
 ---
 name: arca-facturador
-description: Prepare and review session CSV batches, maintain this local ARCA Streamlit invoice application, and regenerate PDFs from authorized records. Use for this repository, its monthly batches, and public distributions without private data.
+description: Prepare and review service CSV batches, maintain this local ARCA Streamlit invoice application, and regenerate PDFs from authorized records. Use for this repository, its monthly batches, and public distributions without private data.
 license: Apache-2.0
 ---
 
@@ -8,9 +8,9 @@ license: Apache-2.0
 
 Locate the repository through `app.py`, `core.py`, and `config.example.json`. Distinguish a private installation with real configuration and records from a public distribution with fictional examples. Never transfer credentials or patient data into the public distribution. Resolve project paths from the repository root, not from the skill directory.
 
-## Session CSV batches
+## Service CSV batches
 
-Read the existing template header and `core.parse_csv` before preparing a batch. Preserve these column names: `id,nombre,documento,fecha,desde,hasta,vencimiento,sesiones,precio_sesion,condicion_iva,observaciones,nota`. The last two are optional. Save UTF-8. Each row represents a separate invoice. `condicion_iva=5` means final consumer, not five sessions. An empty DNI is allowed; do not invent one. Use ISO dates, positive integer session counts, and positive prices in pesos with at most two decimal places and no thousands separator. Compute totals with Decimal as sessions multiplied by price.
+Read the existing template header and `core.parse_csv` before preparing a batch. Preserve these column names: `id,nombre,documento,fecha,desde,hasta,vencimiento,sesiones,precio_sesion,condicion_iva,observaciones,nota`. The last two are optional. Save UTF-8. Each row represents a separate invoice. `condicion_iva=5` means final consumer, not five sessions. An empty DNI is allowed; do not invent one. Use ISO dates, positive integer unit counts, and positive prices in pesos with at most two decimal places and no thousands separator. Compute totals with Decimal as quantity multiplied by unit price.
 
 When transcribing an image, check the written month rather than replacing it with an accidentally mentioned month. Preserve names the user has confirmed. Ambiguous additional sessions or prices need clarification; do not infer an extra charge from shorthand alone. Apply explicit corrections to observations as well. Disclose any reused template dates and leave illegible names pending confirmation. Create a separate file for new patients without modifying the previous batch. Preparing a CSV does not authorize issuance.
 
@@ -40,3 +40,11 @@ python -m py_compile app.py core.py generate_invoice_pdf.py
 ```
 
 For CSV changes, run `parse_csv` and verify row count and total. Validation must not issue invoices or connect to ARCA merely to check formatting. Read `docs/arquitectura.md` for components and persistence limits and `README.md` for setup and launch commands. If current tax rules are needed, verify official ARCA documentation; this skill describes the implementation and does not certify tax compliance. Preserve `LICENSE`, `NOTICE`, and existing third-party notices when distributing the project.
+
+## Docker and guided service entry
+
+Read `docs/docker.md` for deployment and `docs/saas.md` for hosted scope. Preserve ROOT as the code directory and DATA_ROOT (ARCA_DATA_DIR) as private storage. The wizard saves configuration through `setup_config.py`; manual entry and CSV share `parse_csv`. CSV names remain compatible: `sesiones` is quantity, `precio_sesion` is unit price, and `observaciones` is the service description. Services are not limited to psychology. Docker publishes locally; hosted Caddy adds HTTPS and a password for one professional, not multiuser isolation. Never delete a production volume or restore old records to bypass pending or duplicate controls.
+
+## Business rules
+
+Read `domain.py` and `docs/business-rules.md` before changing billing semantics. Preserve immutable entities and the domain/persistence acceptance tests across infrastructure changes. CSV names belong to adapters. Incomplete or contradictory ARCA replies stay pending, not rejected; only explicit rejection permits a reviewed retry. Do not change stable IDs or previously recorded payloads as a side effect of a technical migration.

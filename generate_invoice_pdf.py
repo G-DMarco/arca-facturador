@@ -17,7 +17,7 @@ from reportlab.pdfgen import canvas
 
 
 def pesos(value):
-    amount = Decimal(str(value))
+    amount = Decimal(str(value).replace(",", "."))
     return f"$ {amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 

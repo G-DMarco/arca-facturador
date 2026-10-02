@@ -9,9 +9,21 @@ Este proyecto nació de una sesión de **vibe coding**, después del cansancio d
 La comunidad está invitada a aportar mejoras, pruebas y documentación. Al abrir issues o pull requests, utilizar exclusivamente datos ficticios. Las contribuciones intencionalmente enviadas para incorporar al proyecto se reciben bajo Apache-2.0, salvo declaración explícita en contrario.
 
 
-Aplicación local Python y Streamlit para importar sesiones desde CSV, revisar el lote, solicitar autorización en WSFEv1 y descargar PDFs con CAE y QR. Incluye homologación y producción con persistencia separada. Alcance actual: factura C, servicios en pesos y consumidor final, con DNI opcional.
+Aplicación local Python y Streamlit para cargar servicios en pantalla o importar un CSV, revisar el lote, solicitar autorización en WSFEv1 y descargar PDFs con CAE y QR. Incluye homologación y producción con persistencia separada. Alcance actual: factura C, servicios en pesos y consumidor final, con DNI opcional.
 
 Esta distribución contiene solo código y datos ficticios. No contiene configuración activa, claves, certificados, tickets, pacientes ni facturas reales. No reutilizar el historial de una instalación privada para publicar este proyecto.
+
+## Empezar con Docker (recomendado para uso guiado)
+
+Con Docker Desktop abierto, hacé doble clic en **Iniciar Windows.cmd**. También podés ejecutar:
+
+```bash
+docker compose up -d --build
+```
+
+Abrí http://127.0.0.1:8501. La pantalla te guía por **Configuración → Preparar facturas → Descargar**. Podés cargar servicios directamente, sin CSV; la descripción es libre y no se limita a sesiones. Incluye botones grandes, ejemplos y un historial desde el que volver a descargar PDFs. Guardá tu lista como CSV para conservar los identificadores.
+
+[Guía de instalación, certificados y backups](docs/docker.md). Para un servicio web privado hay una configuración con HTTPS y contraseña: [servicio por profesional y evolución a SaaS](docs/saas.md). La variante compartida con cuentas independientes aún requiere desarrollo.
 
 ## Instalación en Windows
 
@@ -46,17 +58,17 @@ bash run_local.sh
 
 `run_local.sh` utiliza `.venv`, funciona desde cualquier directorio y aplica `umask 077` a los archivos nuevos. También admite Git Bash con `.venv/Scripts/python.exe`. No instala paquetes ni crea o sobrescribe configuraciones. Abre http://127.0.0.1:8501 y detén el servidor con Ctrl+C. En Windows puedes usar `./run_local.ps1` después de instalar las dependencias; restringe los archivos privados con los permisos de Windows (ACL).
 
-## CSV mensual
+## Servicios y CSV compatible
 
-Usar `facturas_ejemplo.csv`, que contiene un paciente ficticio. Actualizar fechas antes de probar. Cada fila es una factura independiente; `total` se calcula como sesiones por precio y no es una columna de entrada.
+Usar `facturas_ejemplo.csv`, que contiene un cliente ficticio. Actualizar fechas antes de probar. Cada fila es una factura independiente; `total` se calcula como sesiones por precio y no es una columna de entrada.
 
 | Columna | Contenido |
 |---|---|
 | id | Identificador único y estable de la obligación |
-| nombre | Receptor/paciente |
+| nombre | Cliente/receptor |
 | documento | DNI de 7 u 8 dígitos, o vacío |
 | fecha, desde, hasta, vencimiento | YYYY-MM-DD |
-| sesiones | Entero positivo |
+| sesiones | Cantidad de unidades, entero positivo |
 | condicion_iva | 5: consumidor final |
 | observaciones, nota | Texto opcional |
 
@@ -64,7 +76,7 @@ Se admite CSV UTF-8 con coma o punto y coma. Para decimal con coma, encerrar el 
 
 ## Registros y comprobantes
 
-Cada entorno guarda su SQLite, lock y ticket WSAA. No borrar registros ni cambiar IDs para reenviar una emisión incierta. Un autorizado devuelve su resultado guardado y un pendiente bloquea el lote. La consulta del núcleo permite investigar; la conciliación requiere revisión manual.
+En Docker, la carpeta de datos es `/data` y se conserva en un volumen; fuera de Docker se usa la carpeta del proyecto, salvo que se configure `ARCA_DATA_DIR`. Cada entorno guarda su SQLite, lock y ticket WSAA. No borrar registros ni cambiar IDs para reenviar una emisión incierta. Un autorizado devuelve su resultado guardado y un pendiente bloquea el lote. La consulta del núcleo permite investigar; la conciliación requiere revisión manual.
 
 Los PDFs usan una plantilla común con recuadros, período, receptor, sesiones, importes, transferencia y autorización. Homologación se identifica como prueba. La descripción y la transferencia se incorporan al PDF local, no como ítems enviados a WSFE.
 
@@ -93,9 +105,15 @@ Referencia: [texto oficial Apache-2.0](https://www.apache.org/licenses/LICENSE-2
 
 ### Description and origin
 
-Facturador ARCA is a local Python and Streamlit application that imports service sessions from CSV, previews invoice batches, requests authorization through ARCA WSFEv1, and generates PDF invoices with CAE and production QR codes. It supports separate testing (homologación) and production records. Current scope: type C invoices, services in Argentine pesos, and final consumers, with optional DNI.
+Facturador ARCA is a local Python and Streamlit application that accepts service descriptions, quantities, and unit prices through a guided form or CSV import, previews invoice batches, requests authorization through ARCA WSFEv1, and generates PDF invoices with CAE and production QR codes. It supports separate testing (homologación) and production records. Current scope: type C invoices, services in Argentine pesos, and final consumers, with optional DNI.
 
 This project started as **vibe coding**, after getting tired of creating invoices one at a time. It is shared openly so the community can use, study, adapt, and improve it consciously: protect private information, review inputs, and understand the invoices before confirming issuance. Contributions, tests, and documentation are welcome. Use fictional data in issues and pull requests. Contributions intentionally submitted for inclusion default to Apache-2.0 unless explicitly stated otherwise.
+
+### Docker and guided interface
+
+Start Docker, run `docker compose up -d --build`, and open http://127.0.0.1:8501. On Windows you can double-click **Iniciar Windows.cmd**. The interface guides configuration, service entry, review, issuance, and downloads. CSV files remain compatible: `sesiones` now means quantity and `precio_sesion` means unit price. Service descriptions come from `observaciones` or the configured default.
+
+See the [Docker guide](docs/docker.md) for certificates and persistent data. An optional Caddy deployment adds HTTPS and password protection for a private installation per professional. A shared SaaS with independent accounts is still future work: see the [service plan](docs/saas.md).
 
 ### Setup and launch
 
@@ -151,3 +169,9 @@ Original project code and documentation are licensed under **Apache License 2.0*
 - **Claude Code (English):** [.claude/skills/arca-facturador/SKILL.md](.claude/skills/arca-facturador/SKILL.md). Skill del repositorio; usa `/arca-facturador` seguido de tu tarea. / Repository skill; invoke `/arca-facturador` followed by your task. See the [official Claude Code skill documentation](https://code.claude.com/docs/en/skills).
 
 Ambas conservan los controles de privacidad, emisión y conciliación. Crear un CSV o regenerar un PDF no autoriza emitir facturas reales. / Both preserve privacy, issuance, and reconciliation controls. Creating a CSV or regenerating a PDF does not authorize real invoice issuance.
+
+Los nombres técnicos del CSV se conservan por compatibilidad: `sesiones` es la cantidad de unidades y `precio_sesion` el importe por unidad. `observaciones` contiene la descripción del servicio; `descripcion_servicio` configura la descripción predeterminada. El alcance fiscal sigue siendo factura C para servicios en pesos y consumidor final.
+
+## Entidades y reglas / Entities and rules
+
+[Reglas de negocio](docs/business-rules.md) documenta las entidades inmutables de `domain.py`, independientes de la interfaz y la infraestructura. Los adaptadores de CSV y configuración las aplican, y la emisión conserva como pendiente cualquier respuesta incierta. / [Business rules](docs/business-rules.md) documents immutable entities independent of UI and infrastructure, with acceptance tests that protect totals, identity and issuance certainty across technical changes.

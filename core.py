@@ -17,6 +17,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 from filelock import FileLock
+from domain import Authorization, BillingPeriod, Customer, InvoiceDraft, InvoiceState, ServiceItem
 
 ROOT = Path(__file__).resolve().parent
 DATA_ROOT = Path(os.environ.get("ARCA_DATA_DIR", str(ROOT))).resolve()
@@ -78,25 +79,20 @@ def parse_csv(data):
     for line, row in enumerate(reader, 2):
         row = {k: v.strip() if v else '' for k,v in row.items() if k}
         try:
-            if len(row.get('observaciones', '')) > 500:
-                raise ValueError('La descripción del servicio admite hasta 500 caracteres')
-            if not row['id'] or row['id'] in ids or not row['nombre']:
-                raise ValueError('ID vacío/duplicado o nombre vacío')
+            if not row['id'] or row['id'] in ids:
+                raise ValueError('ID vacío/duplicado')
             ids.add(row['id'])
-            for k in ['fecha','desde','hasta','vencimiento']:
-                datetime.strptime(row[k], '%Y-%m-%d')
-            if row['desde'] > row['hasta'] or row['vencimiento'] < row['fecha']:
-                raise ValueError('Período o vencimiento incoherente')
-            if row['documento'] and (not row['documento'].isdigit() or not 7 <= len(row['documento']) <= 8):
-                raise ValueError('DNI inválido; si se informa debe tener 7 u 8 dígitos')
-            sessions = int(row['sesiones'])
-            price = Decimal(row['precio_sesion'].replace(',', '.'))
-            if sessions <= 0 or not price.is_finite() or price <= 0 or price != price.quantize(Decimal('.01')):
-                raise ValueError('Sesiones/precio inválidos; máximo 2 decimales')
-            if int(row['condicion_iva']) != 5:
-                raise ValueError('Esta versión admite solamente consumidor final (5)')
-            row['total'] = str((price*sessions).quantize(Decimal('.01')))
-            row['descripcion'] = row.get('observaciones') or f"{sessions} unidades de servicio. Cliente: {row['nombre']}. Período: {row['desde']} a {row['hasta']}."
+            dates = {key: datetime.strptime(row[key], "%Y-%m-%d").date() for key in ("fecha", "desde", "hasta", "vencimiento")}
+            quantity = int(row["sesiones"])
+            description = row.get("observaciones") or f"{quantity} unidades de servicio. Cliente: {row['nombre']}. Período: {row['desde']} a {row['hasta']}."
+            draft = InvoiceDraft(
+                row["id"],
+                Customer(row["nombre"], row["documento"], int(row["condicion_iva"])),
+                ServiceItem(description, quantity, Decimal(row["precio_sesion"].replace(",", "."))),
+                BillingPeriod(dates["fecha"], dates["desde"], dates["hasta"], dates["vencimiento"]),
+            )
+            row['total'] = str(draft.total)
+            row['descripcion'] = draft.service.description
             rows.append(row)
         except (ValueError, InvalidOperation) as e:
             raise ValueError(f'Fila {line}: {e}') from e
@@ -206,9 +202,9 @@ def emit_batch(rows, config):
                 db.execute('INSERT OR REPLACE INTO facturas VALUES (?,?,?,?,?,?)',(scope,row['id'],payload,number,'pendiente',None))
                 db.commit()
                 response = api.issue(row,number)
-                details = (response.get('FeDetResp') or {}).get('FECAEDetResponse') or []
-                accepted = bool(details and details[0].get('Resultado') == 'A' and details[0].get('CAE'))
-                state = 'autorizada' if accepted else 'rechazada'
+                authorization = Authorization.from_response(response)
+                accepted = authorization.state is InvoiceState.AUTHORIZED
+                state = authorization.state.value
                 db.execute('UPDATE facturas SET estado=?,respuesta=? WHERE scope=? AND id=?',(state,json.dumps(response,default=str),scope,row['id']))
                 db.commit()
                 output.append({'id':row['id'],'numero':number,'estado':state,'respuesta':response})

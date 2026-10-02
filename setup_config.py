@@ -5,18 +5,12 @@ import os
 import tempfile
 from pathlib import Path
 
-from core import DATA_ROOT, environment
+from core import DATA_ROOT
+from domain import BillingEnvironment, Issuer
 
 
 def validate_config(config):
-    environment(config)
-    cuit = str(config.get("cuit", ""))
-    if not cuit.isascii() or not cuit.isdigit() or len(cuit) != 11 or cuit == "00000000000":
-        raise ValueError("Ingresá tu CUIT de 11 dígitos, sin guiones.")
-    if not 1 <= int(config.get("punto_venta", 0)) <= 99999:
-        raise ValueError("El punto de venta debe estar entre 1 y 99999.")
-    if not str(config.get("nombre_emisor", "")).strip():
-        raise ValueError("Ingresá el nombre del profesional.")
+    Issuer(str(config.get("cuit", "")), int(config.get("punto_venta", 0)), str(config.get("nombre_emisor", "")), BillingEnvironment(config.get("entorno", "homologacion")))
     for field in ("certificado", "clave_privada"):
         path = Path(config.get(field, ""))
         if not str(config.get(field, "")).strip() or path.is_absolute() or ".." in path.parts:

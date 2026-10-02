@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 ARCA_DATA_DIR=/data HOME=/tmp
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt     && groupadd --gid 10001 arca     && useradd --uid 10001 --gid arca --no-create-home arca     && mkdir -p /data/certificados     && chown -R arca:arca /data
-COPY app.py core.py generate_invoice_pdf.py setup_config.py ./
+COPY app.py core.py domain.py generate_invoice_pdf.py setup_config.py ./
 COPY config.example.json config.produccion.example.json facturas_ejemplo.csv LICENSE NOTICE ./
 COPY .streamlit/config.toml .streamlit/config.toml
 USER 10001:10001

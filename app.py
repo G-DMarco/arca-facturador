@@ -6,6 +6,7 @@ import sqlite3
 import zipfile
 import csv
 import uuid
+import hashlib
 from datetime import date
 from decimal import Decimal
 from html import escape
@@ -23,7 +24,7 @@ FINAL_BATCH_PATH = DATA_ROOT / "lote_definitivo_local.csv"
 
 
 def money(value):
-    return f"$ {Decimal(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"$ {Decimal(str(value).replace(",", ".")):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def filename_part(value):
@@ -210,6 +211,8 @@ def build_download(rows, results, config):
 
 def load_invoice_records(production_only=False):
     records = []
+    if not config or not config.get("cuit") or not config.get("punto_venta"):
+        return pd.DataFrame()
     db_names = ("produccion.sqlite3",) if production_only else ("produccion.sqlite3", "homologacion.sqlite3")
     for db_name in db_names:
         db_path = DATA_ROOT / db_name
@@ -397,12 +400,13 @@ with upload_tab:
             if config:
                 st.write(f"Punto de venta: {int(config['punto_venta']):05d}")
 
+        review_key = hashlib.sha256(json.dumps({"rows": rows, "config": config}, sort_keys=True, default=str).encode()).hexdigest()
         confirmed = st.checkbox(
-            f"Revisé los datos y confirmo crear {len(rows)} factura(s) en {env_name}"
+            f"Revisé los datos y confirmo crear {len(rows)} factura(s) en {env_name}", key=f"confirm_{review_key}"
         )
         production_text_ok = True
         if env_name == "produccion":
-            typed = st.text_input("Para produccion escribi EMITIR REAL")
+            typed = st.text_input("Para producción escribí EMITIR REAL", key=f"production_{review_key}")
             production_text_ok = typed.strip().upper() == "EMITIR REAL"
         emit = st.button(
             "Emitir facturas reales" if env_name == "produccion" else "Generar comprobantes de prueba",

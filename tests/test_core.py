@@ -15,6 +15,10 @@ def csv_bytes(*rows):
 
 
 class ParseCsvTests(unittest.TestCase):
+    def test_empty_csv_has_actionable_error(self):
+        with self.assertRaisesRegex(ValueError, "CSV vacío"):
+            parse_csv(b"")
+
     def test_valid_monthly_invoice_row_calculates_total_and_description(self):
         rows = parse_csv(
             csv_bytes(
