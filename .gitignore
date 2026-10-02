@@ -51,3 +51,7 @@ backups/
 
 # Local history sanitization plan (not for publication)
 .privacy/
+
+# Interrupted private JSON writes
+.private-*
+.config-*
