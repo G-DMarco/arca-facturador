@@ -1,36 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
 """Local configuration validation and atomic storage; never contacts ARCA."""
-import json
-import os
-import tempfile
-from pathlib import Path
-
 from core import DATA_ROOT
 from domain import BillingEnvironment, Issuer
+from security import safe_data_path, write_private_json
 
 
 def validate_config(config):
     Issuer(str(config.get("cuit", "")), int(config.get("punto_venta", 0)), str(config.get("nombre_emisor", "")), BillingEnvironment(config.get("entorno", "homologacion")))
-    for field in ("certificado", "clave_privada"):
-        path = Path(config.get(field, ""))
-        if not str(config.get(field, "")).strip() or path.is_absolute() or ".." in path.parts:
-            raise ValueError("Las rutas del certificado y la clave deben estar dentro de la carpeta de datos.")
-        if not (DATA_ROOT / path).resolve().is_relative_to(DATA_ROOT):
-            raise ValueError("El certificado y la clave deben estar dentro de la carpeta de datos.")
+    for field, suffixes in [("certificado", {".crt", ".cer", ".pem"}), ("clave_privada", {".key", ".pem"})]:
+        safe_data_path(DATA_ROOT, config.get(field, ""), suffixes)
+    for field in ["nombre_emisor", "profesion", "descripcion_servicio", "domicilio_comercial", "localidad", "matricula", "alias", "cbu"]:
+        value = config.get(field, "")
+        if not isinstance(value, str) or len(value) > 500 or "\x00" in value:
+            raise ValueError("Los datos del emisor admiten textos de hasta 500 caracteres")
     return config
 
 
 def save_config(config):
     validate_config(config)
-    DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    path = DATA_ROOT / "config.json"
-    descriptor, temporary = tempfile.mkstemp(prefix=".config-", dir=DATA_ROOT)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(config, handle, ensure_ascii=False, indent=2)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    write_private_json(DATA_ROOT, "config.json", config)

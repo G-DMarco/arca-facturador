@@ -14,6 +14,7 @@ from html import escape
 import pandas as pd
 import streamlit as st
 
+from security import MAX_BATCH_ROWS, safe_data_path
 from core import DATA_ROOT, ROOT, emit_batch, environment, get_points_of_sale, parse_csv, test_pdf
 
 
@@ -112,7 +113,7 @@ def load_config():
     if not CONFIG_PATH.exists():
         return None, "Falta config.json. Copia config.example.json y revisa el punto de venta."
     try:
-        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        data = json.loads(safe_data_path(DATA_ROOT, "config.json").read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError("La configuración debe ser un objeto JSON")
         return data, None
@@ -182,8 +183,10 @@ def configuration_screen(config):
                 st.session_state.pop("batch", None)
                 st.session_state["configuration_saved"] = True
                 st.rerun()
-            except (ValueError, TypeError, OSError) as exc:
+            except (ValueError, TypeError) as exc:
                 st.error(f"No se guardaron los datos: {exc}")
+            except OSError:
+                st.error("No pudimos guardar la configuración. Revisá los permisos de la carpeta de datos.")
     if st.session_state.pop("configuration_saved", False):
         st.success("Tus datos están guardados. Ya podés preparar facturas.")
     st.caption("Los archivos privados quedan en la carpeta de datos de esta instalación. Consultá la guía de Docker para agregar el certificado y la clave.")
@@ -215,7 +218,7 @@ def load_invoice_records(production_only=False):
         return pd.DataFrame()
     db_names = ("produccion.sqlite3",) if production_only else ("produccion.sqlite3", "homologacion.sqlite3")
     for db_name in db_names:
-        db_path = DATA_ROOT / db_name
+        db_path = safe_data_path(DATA_ROOT, db_name)
         if not db_path.exists() or db_path.stat().st_size == 0:
             continue
         db = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)
@@ -281,7 +284,7 @@ else:
 if not ready:
     st.info("Primer uso: abrí Configuración y completá tus datos. También podés explorar la carga de servicios.")
 with st.sidebar.expander("Ayuda de conexión"):
-    if st.button("Consultar puntos de venta", disabled=not ready, use_container_width=True):
+    if st.button("Consultar puntos de venta", disabled=not ready, use_container_width=True) and ready:
         try:
             st.session_state["ptos_venta"] = get_points_of_sale(config)
         except Exception:
@@ -321,7 +324,9 @@ with upload_tab:
             until = second.date_input("Servicio hasta", value=date.today())
             reference = st.text_input("Identificador del servicio (opcional)", help="Si ya cargaste este servicio antes, usá su mismo identificador. Si lo dejás vacío se crea uno nuevo.")
             add = st.form_submit_button("Agregar a la lista para revisar", type="primary")
-        if add:
+        if add and len(st.session_state.get("draft_rows", [])) >= MAX_BATCH_ROWS:
+            st.error("El lote admite hasta 500 facturas. Emití o guardá esta lista antes de agregar más.")
+        elif add:
             candidate = dict(id=reference.strip() or str(uuid.uuid4()), nombre=name.strip(), documento=doc.strip(), fecha=invoice_date.isoformat(), desde=since.isoformat(), hasta=until.isoformat(), vencimiento=due.isoformat(), sesiones=str(quantity), precio_sesion=price.strip(), condicion_iva="5", observaciones=description.strip(), nota="")
             try:
                 pending = st.session_state.get("draft_rows", []) + [candidate]
@@ -415,18 +420,19 @@ with upload_tab:
             use_container_width=True,
         )
 
-        if emit:
+        if emit and not (ready and confirmed and production_text_ok):
+            st.error("Completá la configuración y confirmá el lote antes de emitir.")
+        elif emit:
             try:
                 with st.spinner(f"Solicitando autorizaciones a ARCA {env_name}..."):
-                    results = emit_batch(rows, config)
+                    results = emit_batch(rows, config, production_confirmation="EMITIR REAL" if env_name == "produccion" and confirmed and production_text_ok else "")
                 st.session_state["batch"] = (rows, results, config)
                 accepted_ids = {item["id"] for item in results if item["estado"] == "autorizada"}
                 st.session_state["draft_rows"] = [r for r in st.session_state.get("draft_rows", []) if r["id"] not in accepted_ids]
                 st.success("Proceso finalizado. Abrí Descargar para guardar tus comprobantes.")
             except Exception as exc:
                 st.error("No pudimos completar la emisión. Revisá el mensaje de ARCA antes de reintentar.")
-                with st.expander("Detalle para soporte (no compartir datos privados)"):
-                    st.code(str(exc))
+                st.caption("El detalle técnico no se muestra para proteger credenciales y datos privados.")
                 st.warning(
                     "Si hubo un fallo de conexion durante el envio, no cambies los ID. "
                     "Primero hay que consultar y conciliar el resultado."

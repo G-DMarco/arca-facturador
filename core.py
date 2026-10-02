@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 from filelock import FileLock
 from domain import Authorization, BillingPeriod, Customer, InvoiceDraft, InvoiceState, ServiceItem
+from security import MAX_BATCH_ROWS, MAX_CSV_BYTES, private_file, safe_data_path, validate_fields, write_private_json
 
 ROOT = Path(__file__).resolve().parent
 DATA_ROOT = Path(os.environ.get("ARCA_DATA_DIR", str(ROOT))).resolve()
@@ -64,21 +65,33 @@ def soap_transport(env_name):
             return super().init_poolmanager(connections, maxsize, block=block, **pool_kwargs)
 
     session = Session()
-    if env_name == 'produccion':
-        session.mount('https://', LegacyTLSAdapter())
+    session.trust_env = False
+    if env_name == 'produccion' and os.environ.get('ARCA_ALLOW_LEGACY_TLS') == '1':
+        for service in ('wsaa', 'wsfe'):
+            session.mount(ENVIRONMENTS[env_name][service].split('?')[0], LegacyTLSAdapter())
     return Transport(session=session, timeout=30, operation_timeout=45)
 
 def parse_csv(data):
+    if len(data) > MAX_CSV_BYTES:
+        raise ValueError('El CSV supera el límite de 5 MB')
     if not data.strip():
         raise ValueError('CSV vacío')
     reader = csv.DictReader(io.StringIO(data.decode('utf-8-sig')), delimiter=';' if ';' in data.decode('utf-8-sig').splitlines()[0] else ',')
     rows, ids = [], set()
+    header = reader.fieldnames or []
+    if len(header) != len(set(header)):
+        raise ValueError('El CSV tiene columnas duplicadas')
     required = {'id','nombre','documento','fecha','desde','hasta','vencimiento','sesiones','precio_sesion','condicion_iva'}
     if not required.issubset(reader.fieldnames or []):
         raise ValueError('Faltan columnas: ' + ', '.join(sorted(required-set(reader.fieldnames or []))))
     for line, row in enumerate(reader, 2):
+        if len(rows) >= MAX_BATCH_ROWS:
+            raise ValueError('El lote admite hasta 500 facturas')
+        if None in row:
+            raise ValueError(f'Fila {line}: hay valores sin columna')
         row = {k: v.strip() if v else '' for k,v in row.items() if k}
         try:
+            validate_fields(row)
             if not row['id'] or row['id'] in ids:
                 raise ValueError('ID vacío/duplicado')
             ids.add(row['id'])
@@ -102,16 +115,17 @@ def parse_csv(data):
 
 class Arca:
     def __init__(self, config):
-        from zeep import Client
+        from zeep import Client, Settings
         self.c = config
+        settings = Settings(forbid_dtd=True, forbid_entities=True, forbid_external=True)
         self.env_name, self.env = environment(config)
         if not str(config['cuit']).isdigit() or len(str(config['cuit'])) != 11 or int(config['punto_venta']) <= 0:
             raise ValueError('CUIT/punto de venta inválido')
         transport = soap_transport(self.env_name)
         self.auth = self._cached_auth(config)
         if not self.auth:
-            cert = x509.load_pem_x509_certificate((DATA_ROOT/config['certificado']).read_bytes())
-            key = serialization.load_pem_private_key((DATA_ROOT/config['clave_privada']).read_bytes(), password=None)
+            cert = x509.load_pem_x509_certificate(safe_data_path(DATA_ROOT, config['certificado'], {'.crt', '.cer', '.pem'}).read_bytes())
+            key = serialization.load_pem_private_key(safe_data_path(DATA_ROOT, config['clave_privada'], {'.key', '.pem'}).read_bytes(), password=None)
             now = datetime.now(timezone.utc)
             ticket = ET.Element('loginTicketRequest', version='1.0')
             header = ET.SubElement(ticket, 'header')
@@ -119,15 +133,18 @@ class Arca:
                 ET.SubElement(header,tag).text = value
             ET.SubElement(ticket,'service').text = 'wsfe'
             cms = pkcs7.PKCS7SignatureBuilder().set_data(ET.tostring(ticket)).add_signer(cert,key,hashes.SHA256()).sign(serialization.Encoding.DER,[pkcs7.PKCS7Options.Binary])
-            wsaa = Client(self.env['wsaa'], transport=transport)
-            reply = ET.fromstring(wsaa.service.loginCms(base64.b64encode(cms).decode()))
+            wsaa = Client(self.env['wsaa'], transport=transport, settings=settings)
+            reply_xml = wsaa.service.loginCms(base64.b64encode(cms).decode())
+            if len(reply_xml) > 65536 or '<!DOCTYPE' in reply_xml.upper() or '<!ENTITY' in reply_xml.upper():
+                raise ValueError('Respuesta de autenticación inválida')
+            reply = ET.fromstring(reply_xml)
             self.auth = {'Token':reply.findtext('.//token'),'Sign':reply.findtext('.//sign'),'Cuit':int(config['cuit'])}
             self._save_auth(config, reply)
-        self.ws = Client(self.env['wsfe'], transport=transport)
+        self.ws = Client(self.env['wsfe'], transport=transport, settings=settings)
 
     def _cached_auth(self, config):
         try:
-            data = json.loads((DATA_ROOT/self.env['ta_cache']).read_text(encoding='utf-8'))
+            data = json.loads(safe_data_path(DATA_ROOT, self.env['ta_cache']).read_text(encoding='utf-8'))
             expires = datetime.fromisoformat(data['expiration_time'])
             if expires.tzinfo is None:
                 expires = expires.replace(tzinfo=timezone.utc)
@@ -147,7 +164,7 @@ class Arca:
             'sign': self.auth['Sign'],
             'expiration_time': expiration,
         }
-        (DATA_ROOT/self.env['ta_cache']).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+        write_private_json(DATA_ROOT, self.env['ta_cache'], payload)
 
     def query(self, number):
         from zeep.helpers import serialize_object
@@ -165,12 +182,17 @@ class Arca:
         detail = dict(Concepto=2,DocTipo=doc_tipo,DocNro=doc_nro,CbteDesde=number,CbteHasta=number,CbteFch=date('fecha'),ImpTotal=Decimal(row['total']),ImpTotConc=0,ImpNeto=Decimal(row['total']),ImpOpEx=0,ImpTrib=0,ImpIVA=0,FchServDesde=date('desde'),FchServHasta=date('hasta'),FchVtoPago=date('vencimiento'),MonId='PES',MonCotiz=1,CondicionIVAReceptorId=5)
         return serialize_object(self.ws.service.FECAESolicitar(Auth=self.auth,FeCAEReq={'FeCabReq':{'CantReg':1,'PtoVta':int(self.c['punto_venta']),'CbteTipo':11},'FeDetReq':{'FECAEDetRequest':[detail]}}))
 
-def emit_batch(rows, config):
+def emit_batch(rows, config, *, production_confirmation=""):
     """Reserva persistente antes del envío. Nunca reenvía estados inciertos."""
     output = []
     env_name, env = environment(config)
-    with FileLock(str(DATA_ROOT/env['lock']), timeout=1):
-        db = sqlite3.connect(DATA_ROOT/env['db'])
+    if env_name == 'produccion' and production_confirmation != 'EMITIR REAL':
+        raise ValueError('La emisión real requiere confirmación explícita')
+    if not rows or len(rows) > MAX_BATCH_ROWS:
+        raise ValueError('El lote debe contener entre 1 y 500 facturas')
+    lock_path = private_file(DATA_ROOT, env['lock'])
+    with FileLock(str(lock_path), timeout=1):
+        db = sqlite3.connect(private_file(DATA_ROOT, env['db']))
         try:
             db.execute('CREATE TABLE IF NOT EXISTS facturas (scope TEXT, id TEXT, payload TEXT, numero INTEGER, estado TEXT, respuesta TEXT, PRIMARY KEY(scope,id))')
             scope = f"{env['scope']}:{config['cuit']}:{config['punto_venta']}"

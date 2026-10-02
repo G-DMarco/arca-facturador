@@ -6,6 +6,9 @@ services:
       - "127.0.0.1:8501:8501"
     volumes:
       - arca_data:/data
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 128
     restart: unless-stopped
     read_only: true
     tmpfs:

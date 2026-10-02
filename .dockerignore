@@ -5,6 +5,7 @@
 !app.py
 !core.py
 !domain.py
+!security.py
 !generate_invoice_pdf.py
 !setup_config.py
 !config.example.json
