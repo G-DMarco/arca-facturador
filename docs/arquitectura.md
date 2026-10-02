@@ -1,6 +1,6 @@
 # Arquitectura del facturador
 
-Aplicación local Python. Streamlit presenta el CSV, pide confirmación de emisión y permite descargar comprobantes. El núcleo calcula importes con Decimal y coordina la autenticación y la persistencia.
+Aplicación local Python. Streamlit permite configurar al emisor, cargar servicios en pantalla o desde CSV, presenta la lista, pide confirmación de emisión y permite descargar comprobantes. El núcleo calcula importes con Decimal y coordina la autenticación y la persistencia.
 
 ```mermaid
 flowchart TD
@@ -48,4 +48,12 @@ Homologación y producción usan endpoints, bases, locks y tickets separados. SQ
 
 ## Límites actuales
 
-Factura C, servicios, pesos argentinos y consumidor final. La descripción y los datos de transferencia pertenecen al PDF local; WSFE recibe importes y campos fiscales, no esa descripción como detalle de ítems. El proyecto no incluye servidor multiusuario, nube ni conciliación automática. El diseño del PDF no equivale a una validación legal de sus datos fiscales.
+Factura C, servicios, pesos argentinos y consumidor final. La descripción y los datos de transferencia pertenecen al PDF local; WSFE recibe importes y campos fiscales, no esa descripción como detalle de ítems. El proyecto incluye despliegue Docker con volumen privado y una variante de acceso web con Caddy, HTTPS y contraseña para un único profesional. No incluye aislamiento multiusuario ni conciliación automática. Ver `docs/docker.md` y `docs/saas.md`. El diseño del PDF no equivale a una validación legal de sus datos fiscales.
+
+## Datos persistentes
+
+`ROOT` identifica el código; `DATA_ROOT` identifica los datos privados y toma `ARCA_DATA_DIR` (por defecto `ROOT`). Configuración, certificados relativos, tickets, locks y SQLite se leen o escriben en `DATA_ROOT`. Docker usa `/app` para código y `/data` para un volumen privado persistente. `setup_config.py` valida y guarda configuración de forma atómica. El historial abre SQLite en modo de solo lectura y filtra el scope del emisor configurado.
+
+## Dominio
+
+`domain.py` contiene entidades inmutables y reglas sin dependencias de infraestructura. `core.parse_csv` y `setup_config.py` adaptan entradas al dominio. `Authorization` distingue autorización, rechazo explícito y respuesta incierta; una respuesta incierta permanece pendiente. Ver `docs/business-rules.md`.

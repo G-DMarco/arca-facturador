@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# Use alongside compose.yaml for one private professional installation.
+services:
+  gateway:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ARCA_DOMAIN: ${ARCA_DOMAIN:?Set ARCA_DOMAIN}
+      ARCA_LOGIN: ${ARCA_LOGIN:?Set ARCA_LOGIN}
+      ARCA_PASSWORD_HASH: ${ARCA_PASSWORD_HASH:?Set ARCA_PASSWORD_HASH}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      facturador:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  caddy_data:
+  caddy_config:

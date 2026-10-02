@@ -33,3 +33,8 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Private runtime data and exports
+data/
+backups/
+!.env.hosted.example
