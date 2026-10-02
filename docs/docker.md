@@ -83,3 +83,13 @@ Run `docker compose up -d --build` and open http://127.0.0.1:8501. On Windows, d
 Code and fictional examples go into the image; configuration, certificates, tickets and SQLite records remain in the persistent `/data` volume. The application runs as UID/GID 10001 with a read-only root filesystem. Add your own ARCA certificate and key using the commands above; protect their permissions. Back up the full data directory while stopped. Never delete the volume or restore old records without reconciling with ARCA.
 
 For one privately hosted professional installation, configure `.env.hosted` and run the two Compose files together. Caddy adds HTTPS and password protection. This is not a shared SaaS: each professional needs a separate deployment, volume, credentials and domain/route. Initial hosting and ARCA setup require technical assistance; daily use happens in the browser. Shared accounts, MFA, recovery, rate limiting and subscriptions are not implemented.
+
+## Hardening y actualización
+
+La imagen usa versiones fijadas en `requirements.lock` y digests de imágenes. Al actualizar, revisar dependencias y ejecutar la auditoría de seguridad y las pruebas antes de cambiar estos archivos. Para instalar fuera de Docker, agregar `-c requirements.lock` al comando `pip install -r requirements.txt`.
+
+La aplicación ahora valida la confirmación en el servidor; no basta con forzar un botón deshabilitado. Producción requiere confirmación explícita también en el núcleo. Se limitan los lotes a 500 filas y 5 MB, y se rechazan textos CSV que comiencen con =, +, - o @ para evitar fórmulas al exportar. Las rutas privadas deben estar dentro de la carpeta de datos, sin enlaces a otros archivos.
+
+La conexión SOAP usa TLS normal por defecto. `ARCA_ALLOW_LEGACY_TLS=1` habilita compatibilidad reducida solo para los endpoints productivos de ARCA y requiere una decisión técnica explícita; no se habilita automáticamente. No se probó su necesidad mediante emisiones reales.
+
+El servicio hosted sigue teniendo una contraseña compartida sin MFA ni límites de intentos. Antes de ofrecer acceso público, colocar una VPN o una capa de identidad con MFA y protección contra fuerza bruta. No mostrar el puerto de la aplicación a Internet. Ver `SECURITY.md` para los controles y los riesgos pendientes.

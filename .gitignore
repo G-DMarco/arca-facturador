@@ -48,3 +48,6 @@ backups/
 *.dump
 *.bundle
 .ssh/
+
+# Local history sanitization plan (not for publication)
+.privacy/
