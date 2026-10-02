@@ -28,7 +28,7 @@ class BoundaryTests(unittest.TestCase):
 
     def test_path_traversal_and_windows_absolute_paths_are_rejected_on_any_os(self):
         with tempfile.TemporaryDirectory() as folder:
-            for value in ["../outside.key", "/outside.key", "C:/private.key", "\\server\share\key.pem", "certificados/key.pem\x00"]:
+            for value in ["../outside.key", "/outside.key", "C:/private.key", r"\\server\share\key.pem", "certificados/key.pem\x00"]:
                 with self.subTest(value=value), self.assertRaises(ValueError):
                     safe_data_path(Path(folder), value)
 
