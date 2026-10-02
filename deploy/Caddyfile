@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+{$ARCA_DOMAIN} {
+    basic_auth {
+        {$ARCA_LOGIN} {$ARCA_PASSWORD_HASH}
+    }
+    reverse_proxy facturador:8501
+}

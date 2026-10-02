@@ -2,6 +2,15 @@
 address = "127.0.0.1"
 port = 8501
 headless = true
+maxUploadSize = 5
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#176b52"
+backgroundColor = "#f6f8fb"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#152536"
+font = "sans serif"

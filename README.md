@@ -57,7 +57,6 @@ Usar `facturas_ejemplo.csv`, que contiene un paciente ficticio. Actualizar fecha
 | documento | DNI de 7 u 8 dígitos, o vacío |
 | fecha, desde, hasta, vencimiento | YYYY-MM-DD |
 | sesiones | Entero positivo |
-| precio_sesion | Pesos, máximo dos decimales, sin miles |
 | condicion_iva | 5: consumidor final |
 | observaciones, nota | Texto opcional |
 
@@ -142,6 +141,13 @@ Read [SECURITY.md](SECURITY.md) for the review and remaining gaps. This applicat
 .venv/bin/python -m py_compile app.py core.py generate_invoice_pdf.py
 ```
 
-See [architecture](docs/arquitectura.md) and the [project skill](skills/arca-facturador/SKILL.md) (Spanish).
+See [architecture](docs/arquitectura.md) and the [project skill](skills/arca-facturador/SKILL.md) (English).
 
 Original project code and documentation are licensed under **Apache License 2.0**; see [LICENSE](LICENSE), [NOTICE](NOTICE), and the [official terms](https://www.apache.org/licenses/LICENSE-2.0). Use, modification, redistribution, and commercial use are permitted subject to its terms. Conscious use is encouraged and adds no license restriction. Dependencies retain their own licenses and notices. The software is provided without warranties under the license. This independent project is not affiliated with or endorsed by ARCA.
+
+## Skills para asistentes / Assistant skills
+
+- **Codex (English):** [skills/arca-facturador/SKILL.md](skills/arca-facturador/SKILL.md). Copia la carpeta `arca-facturador` a tu directorio de skills de Codex para instalarla. / Copy the `arca-facturador` folder into your Codex skills directory to install it.
+- **Claude Code (English):** [.claude/skills/arca-facturador/SKILL.md](.claude/skills/arca-facturador/SKILL.md). Skill del repositorio; usa `/arca-facturador` seguido de tu tarea. / Repository skill; invoke `/arca-facturador` followed by your task. See the [official Claude Code skill documentation](https://code.claude.com/docs/en/skills).
+
+Ambas conservan los controles de privacidad, emisión y conciliación. Crear un CSV o regenerar un PDF no autoriza emitir facturas reales. / Both preserve privacy, issuance, and reconciliation controls. Creating a CSV or regenerating a PDF does not authorize real invoice issuance.

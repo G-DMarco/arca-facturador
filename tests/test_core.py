@@ -25,8 +25,8 @@ class ParseCsvTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["total"], "100000.00")
-        self.assertTrue(rows[0]["descripcion"].startswith("4 sesiones"))
-        self.assertIn("Paciente: Paciente Ejemplo", rows[0]["descripcion"])
+        self.assertTrue(rows[0]["descripcion"].startswith("4 unidades de servicio"))
+        self.assertIn("Cliente: Paciente Ejemplo", rows[0]["descripcion"])
         self.assertIn("2026-09-01 a 2026-09-30", rows[0]["descripcion"])
 
     def test_semicolon_csv_accepts_quoted_decimal_comma(self):

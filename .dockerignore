@@ -1,0 +1,15 @@
+# Allowlist: private files never enter the build context.
+**
+!Dockerfile
+!requirements.txt
+!app.py
+!core.py
+!generate_invoice_pdf.py
+!setup_config.py
+!config.example.json
+!config.produccion.example.json
+!facturas_ejemplo.csv
+!LICENSE
+!NOTICE
+!.streamlit/
+!.streamlit/config.toml

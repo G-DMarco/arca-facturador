@@ -4,19 +4,22 @@ import json
 import re
 import sqlite3
 import zipfile
+import csv
+import uuid
+from datetime import date
 from decimal import Decimal
 from html import escape
 
 import pandas as pd
 import streamlit as st
 
-from core import ROOT, emit_batch, environment, get_points_of_sale, parse_csv, test_pdf
+from core import DATA_ROOT, ROOT, emit_batch, environment, get_points_of_sale, parse_csv, test_pdf
 
 
-CONFIG_PATH = ROOT / "config.json"
+CONFIG_PATH = DATA_ROOT / "config.json"
 SAMPLE_PATH = ROOT / "facturas_ejemplo.csv"
-MINIMAL_PRODUCTION_PATH = ROOT / "lote_minimo_local.csv"
-FINAL_BATCH_PATH = ROOT / "lote_definitivo_local.csv"
+MINIMAL_PRODUCTION_PATH = DATA_ROOT / "lote_minimo_local.csv"
+FINAL_BATCH_PATH = DATA_ROOT / "lote_definitivo_local.csv"
 
 
 def money(value):
@@ -31,7 +34,7 @@ def filename_part(value):
 def invoice_preview_html(row, config):
     point = f"{int(config['punto_venta']):05d}" if config else "00000"
     doc_label = f"DNI {escape(row['documento'])}" if row["documento"] else "Doc. (otro) 0"
-    description = f"{escape(row['sesiones'])} sesion(es) de atencion psicologica - {escape(row['nombre'])}"
+    description = escape(row.get("observaciones") or (config or {}).get("descripcion_servicio", "Prestación de servicios"))
     return f"""
     <div style="border:1px solid #222; background:white; color:#111; font-family:Arial, sans-serif; max-width:900px;">
       <div style="display:grid; grid-template-columns: 1fr 86px 1fr; border-bottom:1px solid #222;">
@@ -39,7 +42,7 @@ def invoice_preview_html(row, config):
           <div style="font-weight:700; font-size:15px;">Profesional: {escape((config or {}).get('nombre_emisor', 'Emisor sin configurar'))}</div>
           <div style="font-weight:700; font-size:13px; margin-top:4px;">{escape((config or {}).get('profesion', ''))}</div>
           <div style="font-size:12px; margin-top:4px;">Matrícula: {escape(str((config or {}).get('matricula', '')))}</div>
-          <div style="font-size:11px; margin-top:8px;">Condicion frente al IVA: Monotributo</div>
+          <div style="font-size:11px; margin-top:8px;">Condición frente al IVA: {escape((config or {}).get("condicion_emisor", "Monotributo"))}</div>
           <div style="font-size:11px;">Domicilio Comercial: {escape((config or {}).get('domicilio_comercial', ''))}</div>
           <div style="font-size:11px;">{escape((config or {}).get('localidad', ''))}</div>
         </div>
@@ -108,29 +111,81 @@ def load_config():
     if not CONFIG_PATH.exists():
         return None, "Falta config.json. Copia config.example.json y revisa el punto de venta."
     try:
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8")), None
-    except Exception as exc:
-        return None, f"No se pudo leer config.json: {exc}"
+        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("La configuración debe ser un objeto JSON")
+        return data, None
+    except Exception:
+        return None, "No pudimos leer tu configuración. Revisá el archivo o volvé a guardar tus datos."
 
 
 def setup_status(config, config_error):
-    cert_path = ROOT / config.get("certificado", "") if config else ROOT / "certificados" / "emisor.crt"
-    key_path = ROOT / config.get("clave_privada", "") if config else ROOT / "certificados" / "emisor.key"
-    checks = [
-        ("config.json", CONFIG_PATH.exists() and not config_error),
-        (str(config.get("certificado", "certificado")) if config else "certificado", cert_path.exists()),
-        (str(config.get("clave_privada", "clave privada")) if config else "clave privada", key_path.exists()),
-        ("facturas_ejemplo.csv", SAMPLE_PATH.exists()),
-    ]
-
-    st.sidebar.header("Estado")
+    from setup_config import validate_config
+    valid = False
+    if config and not config_error:
+        try:
+            validate_config(config)
+            valid = True
+        except (ValueError, TypeError, KeyError):
+            pass
+    checks = [("Datos del profesional", valid)]
+    for field, label in [("certificado", "Certificado ARCA"), ("clave_privada", "Clave privada")]:
+        value = (config or {}).get(field, "")
+        checks.append((label, valid and isinstance(value, str) and bool(value) and (DATA_ROOT / value).is_file()))
+    st.sidebar.subheader("Tu configuración")
     for label, ok in checks:
-        st.sidebar.write(("OK " if ok else "Falta ") + label)
-
-    st.sidebar.divider()
-    if config:
-        st.sidebar.caption(f"Entorno ARCA: {config.get('entorno', 'homologacion')}")
+        st.sidebar.write(("✓ " if ok else "○ ") + label)
+    st.sidebar.caption("Completá lo que falta en Configuración. Podés preparar un lote antes de conectar ARCA.")
     return all(ok for _, ok in checks)
+
+
+def csv_export(rows):
+    fields = ["id", "nombre", "documento", "fecha", "desde", "hasta", "vencimiento", "sesiones", "precio_sesion", "condicion_iva", "observaciones", "nota"]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue().encode("utf-8-sig")
+
+
+def configuration_screen(config):
+    from setup_config import save_config
+    current = config or {}
+    st.subheader("Tus datos, una sola vez")
+    st.write("Completá los datos que aparecerán en tus facturas. Guardar no emite comprobantes ni consulta ARCA.")
+    with st.form("configuration"):
+        name = st.text_input("Nombre o razón social", value=current.get("nombre_emisor", ""))
+        cuit = st.text_input("CUIT (11 dígitos, sin guiones)", value=str(current.get("cuit", "")))
+        point = st.number_input("Punto de venta", min_value=1, max_value=99999, value=1 if not str(current.get("punto_venta", 1)).isdigit() else max(1, min(99999, int(current.get("punto_venta", 1)))))
+        mode = st.radio("¿Dónde querés trabajar?", ["Pruebas sin validez fiscal", "Producción: facturas reales"], index=1 if current.get("entorno") == "produccion" else 0)
+        profession = st.text_input("Actividad o profesión", value=current.get("profesion", ""))
+        service = st.text_input("Descripción habitual del servicio", value=current.get("descripcion_servicio", "Prestación de servicios"))
+        address = st.text_input("Domicilio comercial", value=current.get("domicilio_comercial", ""))
+        city = st.text_input("Localidad", value=current.get("localidad", ""))
+        registration = st.text_input("Matrícula (si corresponde)", value=str(current.get("matricula", "")))
+        alias = st.text_input("Alias bancario (opcional)", value=current.get("alias", ""))
+        cbu = st.text_input("CBU (opcional)", value=current.get("cbu", ""))
+        with st.expander("Conexión con ARCA: certificado y clave"):
+            st.write("Estos archivos se obtienen en ARCA. Si aún no los tenés, pedí ayuda a tu contador. No los compartas en mensajes ni repositorios.")
+            cert = st.text_input("Ruta del certificado", value=current.get("certificado", "certificados/emisor.crt"))
+            key = st.text_input("Ruta de la clave privada", value=current.get("clave_privada", "certificados/emisor.key"))
+        acknowledge = st.checkbox("Entiendo que Producción permite emitir facturas reales", value=False)
+        submitted = st.form_submit_button("Guardar mis datos", type="primary")
+    if submitted:
+        if mode.startswith("Producción") and not acknowledge:
+            st.error("Para activar Producción, confirmá que entendés su alcance.")
+        else:
+            updated = dict(current, nombre_emisor=name, cuit=cuit.strip(), punto_venta=int(point), entorno="produccion" if mode.startswith("Producción") else "homologacion", profesion=profession, descripcion_servicio=service, domicilio_comercial=address, localidad=city, matricula=registration, alias=alias, cbu=cbu, certificado=cert, clave_privada=key)
+            try:
+                save_config(updated)
+                st.session_state.pop("batch", None)
+                st.session_state["configuration_saved"] = True
+                st.rerun()
+            except (ValueError, TypeError, OSError) as exc:
+                st.error(f"No se guardaron los datos: {exc}")
+    if st.session_state.pop("configuration_saved", False):
+        st.success("Tus datos están guardados. Ya podés preparar facturas.")
+    st.caption("Los archivos privados quedan en la carpeta de datos de esta instalación. Consultá la guía de Docker para agregar el certificado y la clave.")
 
 
 def build_download(rows, results, config):
@@ -157,10 +212,10 @@ def load_invoice_records(production_only=False):
     records = []
     db_names = ("produccion.sqlite3",) if production_only else ("produccion.sqlite3", "homologacion.sqlite3")
     for db_name in db_names:
-        db_path = ROOT / db_name
+        db_path = DATA_ROOT / db_name
         if not db_path.exists() or db_path.stat().st_size == 0:
             continue
-        db = sqlite3.connect(db_path)
+        db = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)
         try:
             tables = db.execute("select name from sqlite_master").fetchall()
             if ("facturas",) not in tables:
@@ -169,6 +224,8 @@ def load_invoice_records(production_only=False):
         finally:
             db.close()
         for scope, invoice_id, payload, number, state, response in rows:
+            if config and scope != f"{'prod' if config.get('entorno') == 'produccion' else 'homo'}:{config['cuit']}:{config['punto_venta']}":
+                continue
             data = json.loads(payload)
             reply = json.loads(response) if response else {}
             parts = scope.split(":")
@@ -178,6 +235,8 @@ def load_invoice_records(production_only=False):
             total = Decimal(data["total"])
             records.append(
                 {
+                    "payload": data,
+                    "result": {"id": invoice_id, "numero": number, "estado": state, "respuesta": reply},
                     "entorno": env_label,
                     "mes": data["fecha"][:7],
                     "fecha": data["fecha"],
@@ -193,100 +252,115 @@ def load_invoice_records(production_only=False):
     return pd.DataFrame(records)
 
 
-st.set_page_config(page_title="Facturador ARCA", layout="wide")
-
+st.set_page_config(page_title="Mis facturas · ARCA", page_icon="🧾", layout="wide")
+st.markdown("""<style>
+.stApp { background: #f6f8fb; }
+.block-container { max-width: 1150px; padding-top: 2rem; }
+[data-testid="stWidgetLabel"] p, [data-testid="stMarkdownContainer"] p { font-size: 1.08rem; }
+.stButton button, .stDownloadButton button { min-height: 3rem; font-size: 1.08rem; }
+[data-testid="stMetric"] { background: white; border: 1px solid #d6dce5; border-radius: 12px; padding: 16px; }
+button:focus-visible, input:focus-visible { outline: 3px solid #176b52 !important; }
+</style>""", unsafe_allow_html=True)
 config, config_error = load_config()
 ready = setup_status(config, config_error)
 try:
     env_name, env = environment(config or {"entorno": "homologacion"})
-except Exception as exc:
+except (ValueError, TypeError) as exc:
     env_name, env = "homologacion", {}
     ready = False
     config_error = str(exc)
-
-st.title("Facturador ARCA")
-st.caption("CSV -> revision -> emision -> descarga")
-
-if config_error:
-    st.warning(config_error)
-    st.code("Copy-Item config.example.json config.json", language="powershell")
-
+st.title("Tus facturas, paso a paso")
+st.write("Cargá tus servicios, revisá los importes y descargá tus comprobantes.")
 if env_name == "produccion":
-    st.error("MODO PRODUCCION: los comprobantes autorizados tienen validez fiscal.")
+    st.warning("FACTURAS REALES · Estás en Producción. Cada emisión autorizada tiene validez fiscal.")
 else:
-    st.info("Esta interfaz trabaja en homologacion. Los comprobantes generados no tienen validez fiscal.")
-
-with st.sidebar.expander("Diagnostico ARCA"):
+    st.info("MODO PRUEBA · Podés practicar. Los comprobantes no tienen validez fiscal.")
+if not ready:
+    st.info("Primer uso: abrí Configuración y completá tus datos. También podés explorar la carga de servicios.")
+with st.sidebar.expander("Ayuda de conexión"):
     if st.button("Consultar puntos de venta", disabled=not ready, use_container_width=True):
         try:
             st.session_state["ptos_venta"] = get_points_of_sale(config)
-        except Exception as exc:
-            st.error(f"{type(exc).__name__}: {exc}")
+        except Exception:
+            st.error("No pudimos consultar ARCA. Revisá el certificado, la clave y tu conexión.")
     if "ptos_venta" in st.session_state:
         st.json(st.session_state["ptos_venta"])
-
-upload_tab, results_tab, management_tab = st.tabs(["Preparar lote", "Resultados", "Gestion mensual"])
-
+setup_tab, upload_tab, results_tab, management_tab, help_tab = st.tabs(["1 · Configuración", "2 · Preparar facturas", "3 · Descargar", "Historial", "Ayuda"])
+with setup_tab:
+    configuration_screen(config)
+with help_tab:
+    st.subheader("Cómo usar el facturador")
+    st.write("1. Guardá tus datos en Configuración y conectá tu certificado y clave de ARCA.")
+    st.write("2. En Preparar facturas, agregá un cliente, describí el servicio e indicá la cantidad y el importe por unidad. También podés importar un CSV.")
+    st.write("3. Revisá cada factura y el total. Confirmá la emisión cuando todo esté correcto.")
+    st.write("4. En Descargar, guardá tus comprobantes. En Historial podés consultar lo registrado.")
+    st.warning("Si se corta la conexión al emitir, no vuelvas a cargar la factura con otro identificador. Hay que consultar ARCA y conciliar el resultado antes de reintentar.")
+    st.caption("Factura C · servicios en pesos · consumidor final. Los datos fiscales deben corresponder a tu situación. Si necesitás otro tipo de factura, consultá a tu contador.")
 with upload_tab:
-    left, right = st.columns([2, 1])
-
-    with left:
-        uploaded_test = st.file_uploader("Cargar CSV de prueba", type=["csv"], key="test_csv")
-        uploaded_final = st.file_uploader(
-            "Cargar CSV definitivo para crear facturas",
-            type=["csv"],
-            key="final_csv",
-        )
-
-    with right:
-        if MINIMAL_PRODUCTION_PATH.exists():
-            st.download_button(
-                "Descargar lote mínimo local",
-                MINIMAL_PRODUCTION_PATH.read_bytes(),
-                "lote_minimo_local.csv",
-                "text/csv",
-                use_container_width=True,
-            )
-        if FINAL_BATCH_PATH.exists():
-            st.download_button(
-                "Descargar lote definitivo",
-                FINAL_BATCH_PATH.read_bytes(),
-                "lote_definitivo_local.csv",
-                "text/csv",
-                use_container_width=True,
-            )
+    st.subheader("Agregá los servicios que querés facturar")
+    method = st.radio("¿Cómo preferís cargar?", ["Completar en pantalla", "Importar archivo CSV"], horizontal=True)
+    uploaded = None
+    rows = None
+    upload_mode = "revisado"
+    if method == "Completar en pantalla":
+        with st.form("add_service", clear_on_submit=False):
+            name = st.text_input("Nombre del cliente")
+            doc = st.text_input("DNI (opcional)")
+            description = st.text_area("Descripción del servicio", value=(config or {}).get("descripcion_servicio", "Prestación de servicios"), max_chars=500)
+            left, right = st.columns(2)
+            quantity = left.number_input("Cantidad", min_value=1, value=1, step=1)
+            price = right.text_input("Importe por unidad, en pesos", placeholder="Ejemplo: 25000,50")
+            first, second = st.columns(2)
+            invoice_date = first.date_input("Fecha de la factura", value=date.today())
+            due = second.date_input("Fecha de vencimiento del pago", value=date.today())
+            first, second = st.columns(2)
+            since = first.date_input("Servicio desde", value=date.today())
+            until = second.date_input("Servicio hasta", value=date.today())
+            reference = st.text_input("Identificador del servicio (opcional)", help="Si ya cargaste este servicio antes, usá su mismo identificador. Si lo dejás vacío se crea uno nuevo.")
+            add = st.form_submit_button("Agregar a la lista para revisar", type="primary")
+        if add:
+            candidate = dict(id=reference.strip() or str(uuid.uuid4()), nombre=name.strip(), documento=doc.strip(), fecha=invoice_date.isoformat(), desde=since.isoformat(), hasta=until.isoformat(), vencimiento=due.isoformat(), sesiones=str(quantity), precio_sesion=price.strip(), condicion_iva="5", observaciones=description.strip(), nota="")
+            try:
+                pending = st.session_state.get("draft_rows", []) + [candidate]
+                parse_csv(csv_export(pending))
+                st.session_state["draft_rows"] = pending
+                st.session_state.pop("batch", None)
+                st.success("Servicio agregado. Revisá la lista debajo antes de emitir.")
+            except (ValueError, UnicodeError) as exc:
+                st.error(f"Revisá los datos: {exc}")
+        if st.session_state.get("draft_rows"):
+            rows = parse_csv(csv_export(st.session_state["draft_rows"]))
+            st.download_button("Guardar esta lista como CSV", csv_export(rows), "servicios.csv", "text/csv")
+            st.caption("Guardá el CSV para conservar los identificadores. Cargar el mismo servicio con un ID nuevo puede duplicar la factura.")
+            remove = st.selectbox("Servicio a quitar de la lista", [r["id"] for r in rows], format_func=lambda value: next(r["nombre"] + " · " + value for r in rows if r["id"] == value))
+            if st.button("Quitar el servicio seleccionado"):
+                st.session_state["draft_rows"] = [r for r in st.session_state["draft_rows"] if r["id"] != remove]
+                st.rerun()
+    else:
+        st.write("Cada fila del archivo será una factura. Se conserva el formato de los CSV anteriores.")
+        uploaded = st.file_uploader("Elegí tu archivo CSV", type=["csv"], key="services_csv")
         if SAMPLE_PATH.exists():
-            st.download_button(
-                "Descargar ejemplo",
-                SAMPLE_PATH.read_bytes(),
-                "facturas_ejemplo.csv",
-                "text/csv",
-                use_container_width=True,
-            )
-
-    uploaded = uploaded_final or uploaded_test
-    upload_mode = "definitivo" if uploaded_final else "prueba"
-
+            st.download_button("Descargar un ejemplo para completar", SAMPLE_PATH.read_bytes(), "facturas_ejemplo.csv", "text/csv")
     if uploaded:
         try:
             rows = parse_csv(uploaded.getvalue())
-        except Exception as exc:
-            st.error(str(exc))
-            st.stop()
-
+        except (ValueError, UnicodeError, IndexError) as exc:
+            st.error(f"No pudimos leer el archivo. Revisá sus columnas y valores: {exc}")
+    if rows:
         total = sum(Decimal(row["total"]) for row in rows)
         patients = len({row["documento"] or row["nombre"] for row in rows})
 
         metric_cols = st.columns(3)
         metric_cols[0].metric("Facturas", len(rows))
-        metric_cols[1].metric("Pacientes", patients)
+        metric_cols[1].metric("Clientes", patients)
         metric_cols[2].metric("Total lote", money(total))
 
-        st.subheader("Vista previa")
+        st.subheader("Revisá tu lista")
         st.dataframe(
             rows,
             use_container_width=True,
             hide_index=True,
+            column_config={"nombre": "Cliente", "documento": "DNI", "sesiones": "Cantidad", "precio_sesion": "Importe por unidad", "observaciones": "Servicio", "total": "Total"},
             column_order=[
                 "id",
                 "nombre",
@@ -301,7 +375,7 @@ with upload_tab:
             ],
         )
 
-        st.subheader("Preview de factura")
+        st.subheader("Así se verá tu factura")
         preview_options = {
             f"{row['id']} - {row['nombre']} - {money(row['total'])}": row
             for row in rows
@@ -309,36 +383,29 @@ with upload_tab:
         selected_preview = st.selectbox("Factura a previsualizar", list(preview_options.keys()))
         st.markdown(invoice_preview_html(preview_options[selected_preview], config), unsafe_allow_html=True)
 
-        st.subheader(f"Crear facturas en {env_name}")
+        st.subheader("Último paso: confirmar la emisión")
         if not ready:
             st.error("Completa la configuracion antes de emitir.")
 
-        if upload_mode == "definitivo":
-            level = st.error if env_name == "produccion" else st.warning
-            level(f"Lote definitivo cargado: se crearan {len(rows)} factura(s) individuales en {env_name} por {money(total)}.")
-        else:
-            st.warning(
-                f"Se crearan {len(rows)} factura(s) individuales en {env_name} por un total de {money(total)}."
-            )
-        with st.expander("Confirmacion de creacion", expanded=True):
-            st.write(f"Tipo de carga: {upload_mode}")
+        st.warning(f"Vas a generar {len(rows)} factura(s) en {env_name} por un total de {money(total)}.")
+        with st.expander("Resumen antes de emitir", expanded=True):
             st.write("Cada fila del CSV se emite como una factura separada.")
-            st.write(f"Periodo: {rows[0]['desde']} a {rows[0]['hasta']}")
-            st.write(f"Fecha de factura: {rows[0]['fecha']}")
-            st.write(f"Primer paciente: {rows[0]['nombre']}")
+            st.write("Revisá las fechas y el período de cada fila en la lista.")
+            st.write("Cada factura conserva su propia fecha.")
+            st.write(f"Primer cliente: {rows[0]['nombre']}")
             st.write(f"Total a emitir: {money(total)}")
             if config:
                 st.write(f"Punto de venta: {int(config['punto_venta']):05d}")
 
         confirmed = st.checkbox(
-            f"Confirmo crear {len(rows)} factura(s) del lote {upload_mode} en ARCA {env_name}"
+            f"Revisé los datos y confirmo crear {len(rows)} factura(s) en {env_name}"
         )
         production_text_ok = True
         if env_name == "produccion":
             typed = st.text_input("Para produccion escribi EMITIR REAL")
             production_text_ok = typed.strip().upper() == "EMITIR REAL"
         emit = st.button(
-            "Crear factura(s) del lote definitivo" if upload_mode == "definitivo" else "Crear factura(s) de prueba",
+            "Emitir facturas reales" if env_name == "produccion" else "Generar comprobantes de prueba",
             type="primary",
             disabled=not (ready and confirmed and production_text_ok),
             use_container_width=True,
@@ -349,21 +416,25 @@ with upload_tab:
                 with st.spinner(f"Solicitando autorizaciones a ARCA {env_name}..."):
                     results = emit_batch(rows, config)
                 st.session_state["batch"] = (rows, results, config)
-                st.success("Creacion finalizada. Revisa la pestana Resultados.")
+                accepted_ids = {item["id"] for item in results if item["estado"] == "autorizada"}
+                st.session_state["draft_rows"] = [r for r in st.session_state.get("draft_rows", []) if r["id"] not in accepted_ids]
+                st.success("Proceso finalizado. Abrí Descargar para guardar tus comprobantes.")
             except Exception as exc:
-                st.error(f"{type(exc).__name__}: {exc}")
+                st.error("No pudimos completar la emisión. Revisá el mensaje de ARCA antes de reintentar.")
+                with st.expander("Detalle para soporte (no compartir datos privados)"):
+                    st.code(str(exc))
                 st.warning(
                     "Si hubo un fallo de conexion durante el envio, no cambies los ID. "
                     "Primero hay que consultar y conciliar el resultado."
                 )
     else:
-        st.write("Carga un CSV para validar importes, fechas, DNI e IDs duplicados.")
+        st.write("Agregá un servicio o importá un archivo para comenzar. Todavía no se emitió ninguna factura.")
 
 with results_tab:
     if "batch" not in st.session_state:
-        st.write("Todavia no hay resultados en esta sesion.")
+        st.write("Tus comprobantes aparecerán aquí después de emitir desde Preparar facturas.")
     else:
-        rows, results, config = st.session_state["batch"]
+        rows, results, batch_config = st.session_state["batch"]
         accepted = sum(1 for result in results if result["estado"] == "autorizada")
         rejected = sum(1 for result in results if result["estado"] == "rechazada")
 
@@ -372,11 +443,14 @@ with results_tab:
         metric_cols[1].metric("Autorizadas", accepted)
         metric_cols[2].metric("Rechazadas", rejected)
 
-        st.dataframe(results, use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(results)[["id", "numero", "estado"]], use_container_width=True, hide_index=True)
+        if rejected:
+            st.warning("Hay facturas rechazadas. Revisá el detalle antes de corregir o reintentar.")
+        st.download_button("Guardar CSV con los identificadores originales", csv_export(rows), "servicios_emitidos.csv", "text/csv")
         st.download_button(
             "Descargar resultados y PDFs individuales",
-            build_download(rows, results, config),
-            f"resultados_{config.get('entorno', 'homologacion')}.zip",
+            build_download(rows, results, batch_config),
+            f"resultados_{batch_config.get('entorno', 'homologacion')}.zip",
             "application/zip",
             use_container_width=True,
         )
@@ -385,10 +459,12 @@ with results_tab:
             st.json(results)
 
 with management_tab:
-    st.subheader("Gestion mensual de produccion")
-    records = load_invoice_records(production_only=True)
+    st.subheader("Tus facturas registradas")
+    records = load_invoice_records(production_only=(env_name == "produccion"))
+    if not records.empty:
+        records = records[records["entorno"] == env_name]
     if records.empty:
-        st.write("Todavia no hay facturas de produccion registradas para visualizar.")
+        st.write("Todavía no hay facturas registradas en este modo.")
     else:
         filtered = records.copy()
 
@@ -427,4 +503,9 @@ with management_tab:
         detail = filtered.sort_values(["fecha", "comprobante"])[
             ["fecha", "paciente", "comprobante", "estado", "cae", "total_texto"]
         ]
-        st.dataframe(detail, use_container_width=True, hide_index=True)
+        st.dataframe(detail, use_container_width=True, hide_index=True, column_config={"paciente": "Cliente", "cae": "Autorización CAE", "total_texto": "Total"})
+        if config and not authorized.empty:
+            options = authorized.to_dict("records")
+            selected = st.selectbox("Comprobante para volver a descargar", range(len(options)), format_func=lambda index: options[index]["comprobante"] + " · " + options[index]["paciente"])
+            saved = options[selected]
+            st.download_button("Descargar PDF guardado", test_pdf(saved["payload"], saved["result"], config), saved["comprobante"] + ".pdf", "application/pdf")

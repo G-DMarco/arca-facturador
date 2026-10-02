@@ -124,9 +124,21 @@ def invoice_pdf(invoice, result, config):
     draw_right(c, x0 + 120 * mm, y - 6 * mm, "Cantidad", 8, True)
     draw_right(c, x0 + 147 * mm, y - 6 * mm, "Precio Unit.", 8, True)
     draw_right(c, x0 + width - 3 * mm, y - 6 * mm, "Importe", 8, True)
-    desc = "Sesion de atencion psicologica" if int(invoice['sesiones']) == 1 else "Sesiones de atencion psicologica"
-    draw_text(c, x0 + 3 * mm, y - 18 * mm, desc, 8)
-    draw_text(c, x0 + 3 * mm, y - 24 * mm, invoice['nombre'], 8)
+    desc = invoice.get("observaciones") or config.get("descripcion_servicio", "Prestación de servicios")
+    from html import escape
+    from reportlab.platypus import Paragraph
+    from reportlab.lib.styles import ParagraphStyle
+    text_width, text_height = 100 * mm, 43 * mm
+    font_size = 8
+    while True:
+        paragraph = Paragraph(escape(desc).replace("\n", "<br/>"), ParagraphStyle("service", fontName="Helvetica", fontSize=font_size, leading=font_size * 1.25))
+        _, height = paragraph.wrap(text_width, text_height)
+        if height <= text_height or font_size <= 4:
+            break
+        font_size -= 0.5
+    if height > text_height:
+        raise ValueError("La descripción es demasiado extensa para el PDF; revisá su longitud.")
+    paragraph.drawOn(c, x0 + 3 * mm, header_y - 3 * mm - height)
     draw_right(c, x0 + 120 * mm, y - 18 * mm, invoice["sesiones"], 8)
     draw_right(c, x0 + 147 * mm, y - 18 * mm, pesos(invoice["precio_sesion"]), 8)
     draw_right(c, x0 + width - 3 * mm, y - 18 * mm, pesos(total), 8)
